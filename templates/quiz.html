@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ topic }} Quiz</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f6fb;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 840px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            padding: 24px;
+        }
+        h2 {
+            color: #1e3a8a;
+            margin-bottom: 20px;
+        }
+        .question {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .options {
+            display: grid;
+            gap: 10px;
+        }
+        .option-btn {
+            text-align: left;
+            padding: 14px 16px;
+            border: 1px solid #dbe3f0;
+            border-radius: 10px;
+            background: #f8fafc;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .option-btn:hover {
+            background: #edf3ff;
+        }
+        .feedback {
+            margin-top: 20px;
+            font-weight: bold;
+            min-height: 30px;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .next-btn {
+            background: #10b981;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>{{ topic }} Quiz</h2>
+        <div class="question">Question {{ current_index + 1 }} / {{ total_questions }}:<br><br>{{ question.question }}</div>
+
+        <form method="POST" action="/quiz">
+            <input type="hidden" name="topic" value="{{ topic }}">
+            <input type="hidden" name="current_index" value="{{ current_index }}">
+            <input type="hidden" name="score" value="{{ score }}">
+            <input type="hidden" name="questions_json" value='{{ questions | tojson | safe }}'>
+
+            <div class="options">
+                {% for letter in ['A','B','C','D'] %}
+                    <button class="option-btn" type="submit" name="selected_option" value="{{ letter }}">{{ letter }}. {{ question.options[letter] }}</button>
+                {% endfor %}
+            </div>
+        </form>
+    </div>
+</body>
+</html>

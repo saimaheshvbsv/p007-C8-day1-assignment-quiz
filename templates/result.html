@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Result</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f6fb;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .card {
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            width: min(90%, 640px);
+            padding: 32px;
+            text-align: center;
+        }
+        h1 {
+            color: #1e3a8a;
+            margin-bottom: 16px;
+        }
+        .score {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #111827;
+        }
+        .message {
+            font-size: 1.1rem;
+            color: #1d4ed8;
+            margin-bottom: 24px;
+        }
+        .actions {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 14px 20px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            color: white;
+        }
+        .restart { background: #2563eb; }
+        .exit { background: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Quiz Complete!</h1>
+        <div><strong>Topic:</strong> {{ topic }}</div>
+        <div class="score">Final Score: {{ score }} / {{ total_questions }}</div>
+        <div class="message">
+            {% if score == total_questions %}
+                Excellent! You got every question correct.
+            {% elif score >= total_questions * 0.7 %}
+                Great job! You did very well.
+            {% elif score >= total_questions * 0.5 %}
+                Nice effort! Keep practicing.
+            {% else %}
+                A good start. Try another round on the same topic.
+            {% endif %}
+        </div>
+        <div class="actions">
+            <a href="/new"><button class="restart">Start New Quiz</button></a>
+            <button class="exit" onclick="window.close();">Exit Quiz</button>
+        </div>
+    </div>
+</body>
+</html>
