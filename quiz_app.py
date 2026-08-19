@@ -1,24 +1,17 @@
 import json
 import os
 import re
+import tkinter as tk
+from tkinter import messagebox
 from typing import Dict, List
 
 from openai import OpenAI
 
 
-def get_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
-    if api_key:
-        return api_key
-
-    api_key = input("Enter your Gemini API key: ").strip()
-    if not api_key:
-        raise ValueError("No API key provided.")
-    return api_key
+MODEL_NAME = "gemini-2.5-flash-lite"
 
 
-def build_client() -> OpenAI:
-    api_key = get_api_key()
+def build_client(api_key: str) -> OpenAI:
     return OpenAI(
         api_key=api_key,
         base_url="https://generativelanguage.googleapis.com/v1beta/openai",
@@ -34,7 +27,8 @@ def extract_json(text: str) -> Dict:
     return json.loads(cleaned)
 
 
-def generate_questions(topic: str, client: OpenAI, count: int = 10) -> List[Dict]:
+def generate_questions(topic: str, api_key: str, count: int = 10) -> List[Dict]:
+    client = build_client(api_key)
     prompt = f"""
 You are a quiz master creating a multiple-choice quiz on the topic: {topic}.
 Generate exactly {count} questions. Each question must have:
@@ -59,7 +53,7 @@ Rules:
 """
 
     response = client.chat.completions.create(
-        model="gemini-2.5-flash-lite",
+        model=MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
         max_tokens=4000,
@@ -76,59 +70,306 @@ Rules:
     return data["questions"]
 
 
-def run_quiz(topic: str) -> None:
-    client = build_client()
-    questions = generate_questions(topic, client)
+class QuizApp:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("AI Quiz Master")
+        self.root.geometry("900x650")
+        self.root.minsize(800, 600)
 
-    score = 0
-    print(f"\nStarting quiz on: {topic}")
-    print("Answer each question with A, B, C, or D.\n")
+        self.api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
+        self.topic = ""
+        self.questions: List[Dict] = []
+        self.current_index = 0
+        self.score = 0
 
-    for index, question in enumerate(questions, start=1):
-        print(f"Question {index}/{len(questions)}")
-        print(question["question"])
+        self.setup_ui()
 
+    def setup_ui(self):
+        self.root.configure(bg="#eef4ff")
+
+        self.card = tk.Frame(self.root, bg="#ffffff", padx=30, pady=25)
+        self.card.pack(fill="both", expand=True, padx=25, pady=25)
+
+        title = tk.Label(
+            self.card,
+            text="AI Quiz Master",
+            font=("Segoe UI", 24, "bold"),
+            bg="#ffffff",
+            fg="#1e3a8a",
+        )
+        title.pack(pady=(0, 20))
+
+        self.setup_panel = tk.Frame(self.card, bg="#ffffff")
+        self.setup_panel.pack(fill="x")
+
+        tk.Label(self.setup_panel, text="Quiz Topic", font=("Segoe UI", 11, "bold"), bg="#ffffff", fg="#1f2937").pack(anchor="w")
+        self.topic_entry = tk.Entry(self.setup_panel, width=80, font=("Segoe UI", 11), bd=1, relief="solid")
+        self.topic_entry.pack(fill="x", pady=(5, 20))
+
+        self.start_button = tk.Button(
+            self.setup_panel,
+            text="Start Quiz",
+            command=self.start_quiz,
+            width=18,
+            height=2,
+            bg="#2563eb",
+            fg="#ffffff",
+            font=("Segoe UI", 11, "bold"),
+            relief="flat",
+            cursor="hand2",
+            bd=0,
+            padx=12,
+        )
+        self.start_button.pack(anchor="center")
+
+        self.quiz_panel = tk.Frame(self.card, bg="#ffffff")
+        self.quiz_panel.pack(fill="both", expand=True)
+        self.quiz_panel.pack_forget()
+
+        self.quiz_canvas = tk.Canvas(self.quiz_panel, bg="#ffffff", highlightthickness=0)
+        self.quiz_scrollbar = tk.Scrollbar(self.quiz_panel, orient="vertical", command=self.quiz_canvas.yview)
+        self.quiz_canvas.configure(yscrollcommand=self.quiz_scrollbar.set)
+
+        self.quiz_canvas.pack(side="left", fill="both", expand=True)
+        self.quiz_scrollbar.pack(side="right", fill="y")
+
+        self.quiz_content = tk.Frame(self.quiz_canvas, bg="#ffffff")
+        self.quiz_canvas.create_window((0, 0), window=self.quiz_content, anchor="nw", width=760)
+
+        self.quiz_content.bind("<Configure>", self.on_quiz_content_configure)
+        self.quiz_canvas.bind("<Configure>", self.on_canvas_resize)
+
+        self.question_label = tk.Label(
+            self.quiz_content,
+            text="",
+            justify="left",
+            wraplength=720,
+            font=("Segoe UI", 17, "bold"),
+            bg="#ffffff",
+            fg="#111827",
+        )
+        self.question_label.pack(anchor="w", pady=(10, 15), fill="x")
+
+        self.option_buttons = {}
+        for option in ["A", "B", "C", "D"]:
+            btn = tk.Button(
+                self.quiz_content,
+                text="",
+                command=lambda letter=option: self.submit_answer(letter),
+                width=90,
+                height=2,
+                anchor="w",
+                justify="left",
+                bg="#f8fafc",
+                fg="#0f172a",
+                font=("Segoe UI", 11),
+                relief="solid",
+                bd=1,
+                pady=8,
+                activebackground="#e2e8f0",
+                activeforeground="#0f172a",
+            )
+            btn.pack(fill="x", pady=5)
+            self.option_buttons[option] = btn
+
+        self.result_label = tk.Label(
+            self.quiz_content,
+            text="",
+            font=("Segoe UI", 12, "bold"),
+            bg="#ffffff",
+            fg="#16a34a",
+            wraplength=720,
+            justify="left",
+        )
+        self.result_label.pack(anchor="w", pady=(18, 10), fill="x")
+
+        self.action_buttons_frame = tk.Frame(self.quiz_content, bg="#ffffff")
+        self.action_buttons_frame.pack(fill="x", pady=(8, 10))
+
+        self.next_button = tk.Button(
+            self.action_buttons_frame,
+            text="Next Question",
+            command=self.next_question,
+            width=18,
+            height=2,
+            bg="#10b981",
+            fg="#ffffff",
+            font=("Segoe UI", 11, "bold"),
+            relief="flat",
+            cursor="hand2",
+            bd=0,
+        )
+        self.next_button.pack(anchor="center")
+        self.next_button.pack_forget()
+
+        self.restart_button = tk.Button(
+            self.action_buttons_frame,
+            text="Start New Quiz",
+            command=self.reset_to_setup,
+            width=18,
+            height=2,
+            bg="#2563eb",
+            fg="#ffffff",
+            font=("Segoe UI", 11, "bold"),
+            relief="flat",
+            cursor="hand2",
+            bd=0,
+        )
+        self.restart_button.pack_forget()
+
+        self.exit_button = tk.Button(
+            self.action_buttons_frame,
+            text="Exit Quiz",
+            command=self.exit_quiz,
+            width=18,
+            height=2,
+            bg="#ef4444",
+            fg="#ffffff",
+            font=("Segoe UI", 11, "bold"),
+            relief="flat",
+            cursor="hand2",
+            bd=0,
+        )
+        self.exit_button.pack_forget()
+
+    def on_quiz_content_configure(self, event):
+        self.quiz_canvas.configure(scrollregion=self.quiz_canvas.bbox("all"))
+
+    def on_canvas_resize(self, event):
+        self.quiz_canvas.itemconfig(self.quiz_canvas.find_all()[0], width=event.width - 20)
+
+    def start_quiz(self):
+        topic = self.topic_entry.get().strip()
+
+        if not topic:
+            messagebox.showerror("Missing topic", "Please enter a topic for the quiz.")
+            return
+
+        api_key = self.api_key or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            messagebox.showerror("Missing API key", "Please set the GEMINI_API_KEY environment variable before starting the quiz.")
+            return
+
+        try:
+            self.api_key = api_key
+            os.environ["GEMINI_API_KEY"] = api_key
+            self.topic = topic
+            self.questions = generate_questions(topic, api_key)
+            self.current_index = 0
+            self.score = 0
+            self.setup_panel.pack_forget()
+            self.quiz_panel.pack(fill="both", expand=True)
+            self.show_question()
+        except Exception as exc:
+            messagebox.showerror("Quiz generation failed", str(exc))
+
+    def show_question(self):
+        self.next_button.pack_forget()
+        self.restart_button.pack_forget()
+        self.exit_button.pack_forget()
+        self.result_label.config(text="")
+
+        for btn in self.option_buttons.values():
+            btn.pack(fill="x", pady=5)
+            btn.config(text="", state="normal", bg="#f8fafc", fg="#0f172a")
+
+        if self.current_index >= len(self.questions):
+            self.finish_quiz()
+            return
+
+        question = self.questions[self.current_index]
         options = question["options"]
-        for key in ["A", "B", "C", "D"]:
-            print(f"{key}. {options[key]}")
 
-        while True:
-            answer = input("Your answer (A/B/C/D): ").strip().upper()
-            if answer in {"A", "B", "C", "D"}:
-                break
-            print("Please enter only A, B, C, or D.")
+        self.question_label.config(text=f"Question {self.current_index + 1}/{len(self.questions)}\n\n{question['question']}", justify="left")
 
+        for letter in ["A", "B", "C", "D"]:
+            btn = self.option_buttons[letter]
+            btn.config(text=f"{letter}. {options[letter]}", bg="#f8fafc", fg="#0f172a", state="normal")
+
+    def submit_answer(self, selected_option: str):
+        if self.current_index >= len(self.questions):
+            return
+
+        question = self.questions[self.current_index]
         correct_option = question["correct_option"].upper()
-        if answer == correct_option:
-            print("Correct! ✅")
-            score += 1
+        options = question["options"]
+
+        for letter in ["A", "B", "C", "D"]:
+            btn = self.option_buttons[letter]
+            if letter == correct_option:
+                btn.config(bg="#bbf7d0", fg="#14532d")
+            elif letter == selected_option:
+                btn.config(bg="#fecaca", fg="#7f1d1d")
+            btn.config(state="disabled")
+
+        if selected_option == correct_option:
+            self.score += 1
+            self.result_label.config(text="Correct! ✅", fg="#16a34a")
         else:
-            print(f"Incorrect ❌ The correct answer is {correct_option}. {options[correct_option]}")
+            self.result_label.config(
+                text=f"Incorrect ❌ The correct answer is {correct_option}: {options[correct_option]}",
+                fg="#dc2626",
+            )
 
-        print("-" * 40)
+        self.next_button.pack(anchor="center", pady=(5, 10))
 
-    print(f"\nQuiz complete! Final score: {score}/{len(questions)}")
-    if score == len(questions):
-        print("Excellent! You got every question right.")
-    elif score >= (len(questions) * 0.7):
-        print("Great job! You did very well.")
-    elif score >= (len(questions) * 0.5):
-        print("Nice effort! Keep practicing.")
-    else:
-        print("A good start. Try another round on the same topic.")
+    def next_question(self):
+        self.current_index += 1
+        self.show_question()
+
+    def finish_quiz(self):
+        self.question_label.config(
+            text=f"Quiz Complete!\n\nTopic: {self.topic}\n\nFinal Score: {self.score}/{len(self.questions)}",
+            justify="center",
+            fg="#111827",
+        )
+        self.result_label.config(text=self.get_score_message(), fg="#1d4ed8")
+
+        for btn in self.option_buttons.values():
+            btn.pack_forget()
+            btn.config(text="", state="disabled")
+
+        self.next_button.pack_forget()
+        self.restart_button.pack(side="left", padx=8, pady=6)
+        self.exit_button.pack(side="left", padx=8, pady=6)
+
+    def reset_to_setup(self):
+        self.current_index = 0
+        self.score = 0
+        self.questions = []
+        self.question_label.config(text="")
+        self.result_label.config(text="")
+        self.restart_button.pack_forget()
+        self.exit_button.pack_forget()
+
+        for btn in self.option_buttons.values():
+            btn.pack_forget()
+            btn.config(text="", state="normal")
+
+        self.quiz_panel.pack_forget()
+        self.setup_panel.pack(fill="x")
+
+    def exit_quiz(self):
+        self.root.destroy()
+
+    def get_score_message(self) -> str:
+        total = len(self.questions)
+        if total == 0:
+            return "No questions were generated."
+        if self.score == total:
+            return "Excellent! You got every question correct."
+        if self.score >= total * 0.7:
+            return "Great job! You did very well."
+        if self.score >= total * 0.5:
+            return "Nice effort! Keep practicing."
+        return "A good start. Try another round on the same topic."
 
 
 def main() -> None:
-    try:
-        topic = input("Enter a quiz topic: ").strip()
-        if not topic:
-            print("Topic cannot be empty.")
-            return
-
-        run_quiz(topic)
-    except Exception as exc:
-        print(f"An error occurred: {exc}")
-        print("Check that your Gemini API key is valid and that the model name is available.")
+    root = tk.Tk()
+    app = QuizApp(root)
+    root.mainloop()
 
 
 if __name__ == "__main__":
