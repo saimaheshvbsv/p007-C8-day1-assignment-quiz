@@ -28,6 +28,10 @@ def extract_json(text: str) -> Dict:
 
 
 def generate_questions(topic: str, api_key: str, count: int = 10) -> List[Dict]:
+    topic = topic.strip()
+    if not topic:
+        raise ValueError("Enough information is not available to frame a quiz.")
+
     client = build_client(api_key)
     prompt = f"""
 You are a quiz master creating a multiple-choice quiz on the topic: {topic}.
@@ -37,7 +41,9 @@ Generate exactly {count} questions. Each question must have:
 - correct_option: one of A, B, C, D
 
 Rules:
-- Make the questions accurate and educational.
+- Only generate a quiz if the topic is sufficiently specific and knowledge-based.
+- If the topic is too vague, too broad, or not a proper subject with enough factual content, return a JSON object with: {{"error": "Enough information is not available to frame a quiz."}}
+- Do not invent facts or create questions for undefined topics.
 - Ensure there is exactly one correct answer for each question.
 - Keep the difficulty appropriate for a general audience.
 - Return valid JSON only in this format:
@@ -61,13 +67,17 @@ Rules:
 
     content = response.choices[0].message.content
     if not content:
-        raise ValueError("The model returned an empty response.")
+        raise ValueError("Enough information is not available to frame a quiz.")
 
     data = extract_json(content)
+    if "error" in data:
+        raise ValueError(str(data["error"]))
     if "questions" not in data or not isinstance(data["questions"], list):
-        raise ValueError("The response did not contain a valid questions list.")
+        raise ValueError("Enough information is not available to frame a quiz.")
+    if len(data["questions"]) < count:
+        raise ValueError("Enough information is not available to frame a quiz.")
 
-    return data["questions"]
+    return data["questions"][:count]
 
 
 class QuizApp:
@@ -263,6 +273,8 @@ class QuizApp:
             self.show_question()
         except Exception as exc:
             messagebox.showerror("Quiz generation failed", str(exc))
+            self.topic = topic
+            self.result_label.config(text="")
 
     def show_question(self):
         self.next_button.pack_forget()
